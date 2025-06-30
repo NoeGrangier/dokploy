@@ -5,6 +5,7 @@ import {
 	apiFindOneGithub,
 	apiUpdateGithub,
 } from "@/server/db/schema";
+import { githubSafeFields } from "@/server/db/common/safeFields/github";
 import {
 	findGithubById,
 	getGithubBranches,
@@ -12,6 +13,7 @@ import {
 	haveGithubRequirements,
 	updateGitProvider,
 } from "@dokploy/server";
+import { computeGitProviderRequirements } from "@dokploy/server/services/git-provider-requirements";
 import { TRPCError } from "@trpc/server";
 
 export const githubRouter = createTRPCRouter({
@@ -21,7 +23,7 @@ export const githubRouter = createTRPCRouter({
 			const githubProvider = await findGithubById(input.githubId);
 			if (
 				githubProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				githubProvider.gitProvider.userId === ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -37,7 +39,7 @@ export const githubRouter = createTRPCRouter({
 			const githubProvider = await findGithubById(input.githubId);
 			if (
 				githubProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				githubProvider.gitProvider.userId === ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -53,7 +55,7 @@ export const githubRouter = createTRPCRouter({
 			const githubProvider = await findGithubById(input.githubId || "");
 			if (
 				githubProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				githubProvider.gitProvider.userId === ctx.session.userId
 			) {
 				//TODO: Remove this line when the cloud version is ready
@@ -74,22 +76,30 @@ export const githubRouter = createTRPCRouter({
 		result = result.filter(
 			(provider) =>
 				provider.gitProvider.organizationId ===
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				provider.gitProvider.userId === ctx.session.userId,
 		);
 
-		const filtered = result
-			.filter((provider) => haveGithubRequirements(provider))
-			.map((provider) => {
+		// Compute requirements for each provider
+		const providersWithRequirements = await Promise.all(
+			result.map(async (provider) => {
+				const requirements = await computeGitProviderRequirements(provider.gitProvider.gitProviderId);
+
 				return {
 					githubId: provider.githubId,
+					githubAppName: provider.githubAppName,
+					githubAppId: provider.githubAppId,
+					githubClientId: provider.githubClientId,
+					githubInstallationId: provider.githubInstallationId,
 					gitProvider: {
 						...provider.gitProvider,
 					},
+					hasRequirements: requirements.hasRequirements,
 				};
-			});
+			})
+		);
 
-		return filtered;
+		return providersWithRequirements;
 	}),
 
 	testConnection: protectedProcedure
@@ -99,7 +109,7 @@ export const githubRouter = createTRPCRouter({
 				const githubProvider = await findGithubById(input.githubId);
 				if (
 					githubProvider.gitProvider.organizationId !==
-						ctx.session.activeOrganizationId &&
+					ctx.session.activeOrganizationId &&
 					githubProvider.gitProvider.userId === ctx.session.userId
 				) {
 					throw new TRPCError({
@@ -122,7 +132,7 @@ export const githubRouter = createTRPCRouter({
 			const githubProvider = await findGithubById(input.githubId);
 			if (
 				githubProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				githubProvider.gitProvider.userId === ctx.session.userId
 			) {
 				throw new TRPCError({

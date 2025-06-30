@@ -20,6 +20,8 @@ import {
 } from "@dokploy/server";
 
 import { TRPCError } from "@trpc/server";
+import { giteaSafeFields } from "@/server/db/common/safeFields/gitea";
+import { computeGitProviderRequirements } from "@dokploy/server/services/git-provider-requirements";
 
 export const giteaRouter = createTRPCRouter({
 	create: protectedProcedure
@@ -46,7 +48,7 @@ export const giteaRouter = createTRPCRouter({
 			const giteaProvider = await findGiteaById(input.giteaId);
 			if (
 				giteaProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				giteaProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -67,22 +69,32 @@ export const giteaRouter = createTRPCRouter({
 		result = result.filter(
 			(provider) =>
 				provider.gitProvider.organizationId ===
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				provider.gitProvider.userId === ctx.session.userId,
 		);
 
-		const filtered = result
-			.filter((provider) => haveGiteaRequirements(provider))
-			.map((provider) => {
+		// Compute requirements for each provider
+		const providersWithRequirements = await Promise.all(
+			result.map(async (provider) => {
+				const requirements = await computeGitProviderRequirements(provider.gitProvider.gitProviderId);
+
 				return {
 					giteaId: provider.giteaId,
+					giteaUrl: provider.giteaUrl,
+					redirectUri: provider.redirectUri,
+					clientId: provider.clientId,
+					expiresAt: provider.expiresAt,
+					scopes: provider.scopes,
+					lastAuthenticatedAt: provider.lastAuthenticatedAt,
 					gitProvider: {
 						...provider.gitProvider,
 					},
+					hasRequirements: requirements.hasRequirements,
 				};
-			});
+			})
+		);
 
-		return filtered;
+		return providersWithRequirements;
 	}),
 
 	getGiteaRepositories: protectedProcedure
@@ -100,7 +112,7 @@ export const giteaRouter = createTRPCRouter({
 			const giteaProvider = await findGiteaById(giteaId);
 			if (
 				giteaProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				giteaProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -137,7 +149,7 @@ export const giteaRouter = createTRPCRouter({
 			const giteaProvider = await findGiteaById(giteaId);
 			if (
 				giteaProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				giteaProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -170,7 +182,7 @@ export const giteaRouter = createTRPCRouter({
 				const giteaProvider = await findGiteaById(giteaId);
 				if (
 					giteaProvider.gitProvider.organizationId !==
-						ctx.session.activeOrganizationId &&
+					ctx.session.activeOrganizationId &&
 					giteaProvider.gitProvider.userId !== ctx.session.userId
 				) {
 					throw new TRPCError({
@@ -199,7 +211,7 @@ export const giteaRouter = createTRPCRouter({
 			const giteaProvider = await findGiteaById(input.giteaId);
 			if (
 				giteaProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				giteaProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -241,7 +253,7 @@ export const giteaRouter = createTRPCRouter({
 			const giteaProvider = await findGiteaById(giteaId);
 			if (
 				giteaProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				giteaProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({

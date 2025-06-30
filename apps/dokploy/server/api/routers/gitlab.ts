@@ -18,6 +18,7 @@ import {
 	updateGitProvider,
 	updateGitlab,
 } from "@dokploy/server";
+import { computeGitProviderRequirements } from "@dokploy/server/services/git-provider-requirements";
 import { TRPCError } from "@trpc/server";
 
 export const gitlabRouter = createTRPCRouter({
@@ -44,7 +45,7 @@ export const gitlabRouter = createTRPCRouter({
 			const gitlabProvider = await findGitlabById(input.gitlabId);
 			if (
 				gitlabProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				gitlabProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -64,22 +65,31 @@ export const gitlabRouter = createTRPCRouter({
 		result = result.filter((provider) => {
 			return (
 				provider.gitProvider.organizationId ===
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				provider.gitProvider.userId === ctx.session.userId
 			);
 		});
-		const filtered = result
-			.filter((provider) => haveGitlabRequirements(provider))
-			.map((provider) => {
+
+		// Compute requirements for each provider
+		const providersWithRequirements = await Promise.all(
+			result.map(async (provider) => {
+				const requirements = await computeGitProviderRequirements(provider.gitProvider.gitProviderId);
+
 				return {
 					gitlabId: provider.gitlabId,
+					gitlabUrl: provider.gitlabUrl,
+					redirectUri: provider.redirectUri,
+					groupName: provider.groupName,
+					expiresAt: provider.expiresAt,
 					gitProvider: {
 						...provider.gitProvider,
 					},
+					hasRequirements: requirements.hasRequirements,
 				};
-			});
+			})
+		);
 
-		return filtered;
+		return providersWithRequirements;
 	}),
 	getGitlabRepositories: protectedProcedure
 		.input(apiFindOneGitlab)
@@ -87,7 +97,7 @@ export const gitlabRouter = createTRPCRouter({
 			const gitlabProvider = await findGitlabById(input.gitlabId);
 			if (
 				gitlabProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				gitlabProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -104,7 +114,7 @@ export const gitlabRouter = createTRPCRouter({
 			const gitlabProvider = await findGitlabById(input.gitlabId || "");
 			if (
 				gitlabProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				gitlabProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({
@@ -121,7 +131,7 @@ export const gitlabRouter = createTRPCRouter({
 				const gitlabProvider = await findGitlabById(input.gitlabId || "");
 				if (
 					gitlabProvider.gitProvider.organizationId !==
-						ctx.session.activeOrganizationId &&
+					ctx.session.activeOrganizationId &&
 					gitlabProvider.gitProvider.userId !== ctx.session.userId
 				) {
 					throw new TRPCError({
@@ -145,7 +155,7 @@ export const gitlabRouter = createTRPCRouter({
 			const gitlabProvider = await findGitlabById(input.gitlabId);
 			if (
 				gitlabProvider.gitProvider.organizationId !==
-					ctx.session.activeOrganizationId &&
+				ctx.session.activeOrganizationId &&
 				gitlabProvider.gitProvider.userId !== ctx.session.userId
 			) {
 				throw new TRPCError({
